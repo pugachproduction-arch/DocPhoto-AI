@@ -10,6 +10,42 @@ export const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
+/**
+ * Уменьшает изображение для API, чтобы избежать перегрузки памяти и лимитов размера запроса.
+ */
+export const prepareImageForAi = async (base64: string, maxSize = 1024): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxSize) {
+          height *= maxSize / width;
+          width = maxSize;
+        }
+      } else {
+        if (height > maxSize) {
+          width *= maxSize / height;
+          height = maxSize;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(base64);
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      // Используем JPEG для уменьшения веса при передаче в API
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = base64;
+  });
+};
+
 export const resizeAndCrop = async (
   imageSrc: string,
   widthMm: number,
@@ -39,7 +75,6 @@ export const resizeAndCrop = async (
         sy = (img.height - sh) / 2;
       }
 
-      // Use a high resolution (approx 300 DPI) for the master crop
       const outputWidth = 1200;
       canvas.width = outputWidth;
       canvas.height = (outputWidth / widthMm) * heightMm;
@@ -67,13 +102,11 @@ export const generateSheetLayout = async (
       let finalWidth = sheetSize.width;
       let finalHeight = sheetSize.height;
 
-      // Handle orientation
       if (orientation === 'landscape') {
         finalWidth = sheetSize.height;
         finalHeight = sheetSize.width;
       }
 
-      // PDF generation
       if (format === 'PDF') {
         const doc = new jsPDF({
           orientation: orientation === 'landscape' ? 'l' : 'p',
@@ -100,7 +133,6 @@ export const generateSheetLayout = async (
         return;
       }
 
-      // Image generation (JPG/PNG)
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
@@ -129,7 +161,6 @@ export const generateSheetLayout = async (
           
           if (x + pW <= canvas.width - margin + 1 && y + pH <= canvas.height - margin + 1) {
             ctx.drawImage(img, x, y, pW, pH);
-            // Thin guide lines
             ctx.strokeStyle = '#E5E7EB';
             ctx.lineWidth = 1;
             ctx.strokeRect(x, y, pW, pH);

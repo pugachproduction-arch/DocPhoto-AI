@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { AppScreen, AppState, PhotoSize, SheetSize, ExportFormat, SheetOrientation } from './types';
 import { PHOTO_SIZES, SHEET_SIZES, BG_COLORS, THEME } from './constants';
-import { fileToBase64, resizeAndCrop, generateSheetLayout } from './utils/imageUtils';
+import { fileToBase64, resizeAndCrop, generateSheetLayout, prepareImageForAi } from './utils/imageUtils';
 import { GeminiService } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -67,7 +67,7 @@ const App: React.FC = () => {
         const base64 = await fileToBase64(file);
         setState(prev => ({ ...prev, originalImage: base64, screen: AppScreen.EDITOR }));
       } catch (err) {
-        alert("Ошибка при загрузке файла");
+        alert("Ошибка при чтении файла");
       } finally {
         setIsLoading(false);
       }
@@ -78,15 +78,21 @@ const App: React.FC = () => {
     if (!state.originalImage) return;
     setIsLoading(true);
     setLoadingText('ИИ улучшает ваше фото...');
+    
     try {
+      // Оптимизируем изображение перед отправкой в ИИ
+      const optimizedImage = await prepareImageForAi(state.originalImage);
+      
       const result = await gemini.processImage(
-        state.originalImage, 
-        aiPrompt || "Adjust lighting for a professional document photo", 
+        optimizedImage, 
+        aiPrompt || "Professional document photo quality", 
         state.bgColor
       );
+      
       setState(prev => ({ ...prev, editedImage: result }));
-    } catch (err) {
-      alert("Ошибка обработки ИИ. Пожалуйста, проверьте соединение и попробуйте снова.");
+    } catch (err: any) {
+      console.error(err);
+      alert(`Ошибка ИИ: ${err.message || "Пожалуйста, попробуйте другое фото или более короткий запрос."}`);
     } finally {
       setIsLoading(false);
     }
@@ -98,25 +104,35 @@ const App: React.FC = () => {
     
     setIsLoading(true);
     setLoadingText('Применение размеров...');
-    const cropped = await resizeAndCrop(base, state.selectedSize.width, state.selectedSize.height);
-    setState(prev => ({ ...prev, editedImage: cropped, screen: AppScreen.PREVIEW }));
-    setIsLoading(false);
+    try {
+      const cropped = await resizeAndCrop(base, state.selectedSize.width, state.selectedSize.height);
+      setState(prev => ({ ...prev, editedImage: cropped, screen: AppScreen.PREVIEW }));
+    } catch (err) {
+      alert("Ошибка при обрезке фото");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const generateSheet = async () => {
     if (!state.editedImage) return;
     setIsLoading(true);
     setLoadingText('Генерация листа для печати...');
-    const layout = await generateSheetLayout(
-      state.editedImage,
-      state.selectedSize,
-      state.sheetSize,
-      state.exportFormat,
-      state.sheetOrientation
-    );
-    setSheetPreview(layout as string);
-    setState(prev => ({ ...prev, screen: AppScreen.EXPORT }));
-    setIsLoading(false);
+    try {
+      const layout = await generateSheetLayout(
+        state.editedImage,
+        state.selectedSize,
+        state.sheetSize,
+        state.exportFormat,
+        state.sheetOrientation
+      );
+      setSheetPreview(layout as string);
+      setState(prev => ({ ...prev, screen: AppScreen.EXPORT }));
+    } catch (err) {
+      alert("Ошибка при генерации листа");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const downloadResult = () => {
@@ -130,13 +146,11 @@ const App: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // --- UI Components ---
-
   const LoadingOverlay = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center text-center px-6 animate-fadeIn">
       <Loader2 className="w-16 h-16 text-emerald-400 animate-spin mb-6" />
       <h3 className="text-xl font-bold mb-2">{loadingText}</h3>
-      <p className="text-emerald-300 opacity-70 text-sm">Это может занять несколько секунд</p>
+      <p className="text-emerald-300 opacity-70 text-sm">Это может занять некоторое время</p>
     </div>
   );
 
@@ -319,7 +333,6 @@ const App: React.FC = () => {
              </div>
            </div>
 
-           {/* Orientation Control */}
            <div className="space-y-3">
              <h3 className="text-xs font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-2">
                <RotateCw className="w-3 h-3" /> Ориентация листа
@@ -374,7 +387,7 @@ const App: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center">
-        <div className={`w-full max-w-sm bg-white rounded-lg shadow-2xl overflow-hidden mb-8 border-4 border-emerald-800/20 ${state.sheetOrientation === 'landscape' ? 'rotate-0' : ''}`}>
+        <div className={`w-full max-w-sm bg-white rounded-lg shadow-2xl overflow-hidden mb-8 border-4 border-emerald-800/20`}>
            {state.exportFormat === 'PDF' ? (
              <div className={`bg-gray-50 flex flex-col items-center justify-center p-8 text-center text-gray-500 ${state.sheetOrientation === 'landscape' ? 'aspect-[1.4/1]' : 'aspect-[1/1.4]'}`}>
                <FileText className="w-20 h-20 text-emerald-600 mb-4" />
@@ -408,7 +421,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="mt-auto py-8 text-emerald-300/30 text-[10px] uppercase tracking-widest text-center">
-          docphoto ai • pwa application • build v1.1
+          docphoto ai • pwa application • build v1.2
         </div>
       </div>
     </div>

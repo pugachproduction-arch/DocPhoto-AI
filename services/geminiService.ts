@@ -11,16 +11,15 @@ export class GeminiService {
   async processImage(base64Image: string, prompt: string, bgColor: string): Promise<string> {
     const model = 'gemini-2.5-flash-image';
     
-    // Cleaning base64 string
-    const data = base64Image.split(',')[1] || base64Image;
+    // Очистка строки Base64 от префикса data:image/...;base64,
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
     const fullPrompt = `
-      Instructions: ${prompt}. 
-      Mandatory: Detect the person in the image. Remove the existing background completely. 
-      Replace the background with a solid flat color: ${bgColor}. 
-      Ensure the lighting on the person looks natural with the new background.
-      Keep the person sharp and professional.
-      Return the final edited image.
+      Action: Detect the person and background.
+      Task: Replace the background with the solid color ${bgColor}.
+      Edit instructions: ${prompt}.
+      Style: Professional document photography. Ensure sharp edges and natural lighting on the subject.
+      Output: Return only the processed image.
     `;
 
     try {
@@ -28,27 +27,31 @@ export class GeminiService {
         model,
         contents: {
           parts: [
-            { inlineData: { data, mimeType: 'image/png' } },
+            { 
+              inlineData: { 
+                data: base64Data, 
+                mimeType: 'image/jpeg' 
+              } 
+            },
             { text: fullPrompt }
           ]
         }
       });
 
-      let editedImage = '';
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            editedImage = `data:image/png;base64,${part.inlineData.data}`;
-            break;
-          }
-        }
+      if (!response.candidates?.[0]?.content?.parts) {
+        throw new Error("API не вернуло результат");
       }
 
-      if (!editedImage) throw new Error("AI did not return an image.");
-      return editedImage;
-    } catch (error) {
-      console.error("Gemini Image Process Error:", error);
-      throw error;
+      const imagePart = response.candidates[0].content.parts.find(p => p.inlineData);
+      
+      if (imagePart?.inlineData?.data) {
+        return `data:image/png;base64,${imagePart.inlineData.data}`;
+      }
+
+      throw new Error("Изображение не найдено в ответе API");
+    } catch (error: any) {
+      console.error("Gemini AI Error:", error);
+      throw new Error(error.message || "Ошибка при обращении к ИИ");
     }
   }
 }
