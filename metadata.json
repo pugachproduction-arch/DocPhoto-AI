@@ -1,7 +1,7 @@
 {
   "name": "DocPhoto AI",
   "short_name": "DocPhoto",
-  "description": "Профессиональные фото на документы с ИИ",
+  "description": "работает но ии не работает",
   "display": "standalone",
   "start_url": "/",
   "theme_color": "#064e3b",
