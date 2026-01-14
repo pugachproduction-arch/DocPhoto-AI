@@ -1,0 +1,12 @@
+{
+  "name": "DocPhoto AI",
+  "short_name": "DocPhoto",
+  "description": "Профессиональные фото на документы с ИИ",
+  "display": "standalone",
+  "start_url": "/",
+  "theme_color": "#064e3b",
+  "background_color": "#064e3b",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
